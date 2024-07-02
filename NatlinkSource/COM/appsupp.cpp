@@ -28,6 +28,7 @@ CDragonCode * initModule();
 
 CDgnAppSupport::CDgnAppSupport()
 {
+	m_pIDgnSite = NULL;
 	m_pNatlinkModule = NULL;
 	m_pDragCode = NULL;
 }
@@ -231,70 +232,8 @@ fail:
 
 STDMETHODIMP CDgnAppSupport::Register( IServiceProvider * pIDgnSite )
 {
-	// load and initialize the Python system
-	std::string init_error =  DoPyConfig();
-	Py_Initialize();
-
-	// load the natlink COM interface into Python and return a pointer to shared CDragonCode object
-	m_pDragCode = initModule();
-	m_pDragCode->setAppClass( this );
-
-	// simulate calling natlink.natConnect() except share the site object
-	BOOL bSuccess = m_pDragCode->natConnect( pIDgnSite );
-	if( !bSuccess )	{
-		OutputDebugString(
-			TEXT( "NatLink: failed to initialize NatSpeak interfaces") );
-		m_pDragCode->displayText( "Failed to initialize NatSpeak interfaces\r\n", TRUE ); // TODO: bug? won't show
-		return S_OK;
-	}
-	
-    // only now do we have the window to show info and possible error messages from before 
-	// Python init
-	DisplayVersions(m_pDragCode);
-	if ( !init_error.empty()) {
-		m_pDragCode->displayText(init_error.c_str());
-		return S_OK;
-	}
-
-	// now load the Python code which sets all the callback functions
-	m_pDragCode->setDuringInit( TRUE );
-    m_pNatlinkModule = PyImport_ImportModule( "natlinkcore" );
-	if ( m_pNatlinkModule == NULL ) {
-		OutputDebugString( TEXT( "Natlink: an exception occurred loading 'natlinkcore' module" ) );
-		DisplaySysPath(m_pDragCode);
-		DisplayPythonException(m_pDragCode);
-		return S_OK;
-	} else {
-		m_pDragCode->displayText( "Natlink is loaded...\n\n", FALSE );
-	}
-
-	//need to add the path of natlinkcore to the Python path.
-	//it could be in either platlib\natlinkcore (i.e. the python install diretory/site-packages)
-	//sysconfig.get_path('purelib')
-	//
-	//or in site.USER_SITE/site-package.  
-	//
-	pyrun_string("import sys,site,sysconfig");
-    pyrun_string("import pydebugstring.output as o");
-
-	//add natlinkcore to the import paths, because the is required for pyrun_string to load modules from natlinkcore
-	pyrun_string("d1=site.USER_SITE+'\\natlinkcore'");
-	pyrun_string("d2=sysconfig.get_path('purelib')+'\\natlinkcore'");
-
-	pyrun_string("sys.path.append(d1)"); 
-	pyrun_string("sys.path.append(d2)");
-
-	//we have to import natlinkcore this way as well, so we can use natlinkcore.* in pyrun_string
-	//pDragCode->displayText("import redirect\n");
-
-	pyrun_string("from natlinkcore import redirect_output");
-	pyrun_string("redirect_output.redirect()");
-
-	pyrun_string("from natlinkcore import loader");
-	pyrun_string("loader.run()");
-
-	m_pDragCode->setDuringInit( FALSE );
-	return S_OK;
+	m_pIDgnSite = pIDgnSite;
+	return loadAndInitPython();
 }
 
 //---------------------------------------------------------------------------
@@ -358,6 +297,78 @@ STDMETHODIMP CDgnAppSupport::EndProcess( DWORD dwProcessID )
 	return S_OK;
 }
 
+
+//---------------------------------------------------------------------------
+// This utility function configures and loads the Python interpreter.
+
+HRESULT CDgnAppSupport::loadAndInitPython()
+{
+	// load and initialize the Python system
+	std::string init_error =  DoPyConfig();
+	Py_Initialize();
+
+	// load the natlink COM interface into Python and return a pointer to shared CDragonCode object
+	m_pDragCode = initModule();
+	m_pDragCode->setAppClass( this );
+
+	// simulate calling natlink.natConnect() except share the site object
+	BOOL bSuccess = m_pDragCode->natConnect( m_pIDgnSite );
+	if( !bSuccess )	{
+		OutputDebugString(
+			TEXT( "NatLink: failed to initialize NatSpeak interfaces") );
+		m_pDragCode->displayText( "Failed to initialize NatSpeak interfaces\r\n", TRUE ); // TODO: bug? won't show
+		return S_OK;
+	}
+
+	// only now do we have the window to show info and possible error messages from before 
+	// Python init
+	DisplayVersions(m_pDragCode);
+	if ( !init_error.empty()) {
+		m_pDragCode->displayText(init_error.c_str());
+		return S_OK;
+	}
+
+	// now load the Python code which sets all the callback functions 
+	m_pDragCode->setDuringInit( TRUE );
+	m_pNatlinkModule = PyImport_ImportModule( "natlinkcore" );
+	if ( m_pNatlinkModule == NULL ) {
+		OutputDebugString( TEXT( "Natlink: an exception occurred loading 'natlinkcore' module" ) );
+		DisplaySysPath(m_pDragCode);
+		DisplayPythonException(m_pDragCode);
+		return S_OK;
+	} else {
+		m_pDragCode->displayText( "Natlink is loaded...\n\n", FALSE );
+	}
+
+	//need to add the path of natlinkcore to the Python path.
+	//it could be in either platlib\natlinkcore (i.e. the python install diretory/site-packages)
+	//sysconfig.get_path('purelib')
+	//
+	//or in site.USER_SITE/site-package.  
+	//
+	pyrun_string("import sys,site,sysconfig");
+	pyrun_string("import pydebugstring.output as o");
+
+	//add natlinkcore to the import paths, because the is required for pyrun_string to load modules from natlinkcore
+	pyrun_string("d1=site.USER_SITE+'\\natlinkcore'");
+	pyrun_string("d2=sysconfig.get_path('purelib')+'\\natlinkcore'");
+
+	pyrun_string("sys.path.append(d1)"); 
+	pyrun_string("sys.path.append(d2)");
+
+	//we have to import natlinkcore this way as well, so we can use natlinkcore.* in pyrun_string
+	//pDragCode->displayText("import redirect\n");
+
+	pyrun_string("from natlinkcore import redirect_output");
+	pyrun_string("redirect_output.redirect()");
+
+	pyrun_string("from natlinkcore import loader");
+	pyrun_string("loader.run()");
+
+	m_pDragCode->setDuringInit( FALSE );
+	return S_OK;
+}
+
 //---------------------------------------------------------------------------
 // This utility function reloads the Python interpreter.  It is called from
 // the display window menu and is useful for debugging during development of
@@ -366,32 +377,12 @@ STDMETHODIMP CDgnAppSupport::EndProcess( DWORD dwProcessID )
 
 void CDgnAppSupport::reloadPython()
 {
-	// FIXME Do this the Natlink 5 way.
-
 	// free our reference to the Python modules
-	Py_XDECREF( m_pNatLinkMain );
+	Py_XDECREF( m_pNatlinkModule );
 
 	// terminate the Python subsystem
 	Py_Finalize();
 
-	// load and initialize the Python system
-	Py_Initialize();
-
-	// load the natlink module into Python
-	initModule();
-
-	// load the Python code which does most of the work
-	m_pDragCode->setDuringInit( TRUE );
-	m_pNatLinkMain = PyImport_ImportModule( "natlinkmain" );
-	m_pDragCode->setDuringInit( FALSE );
-	
-	if( m_pNatLinkMain == NULL )
-	{
-		OutputDebugString(
-			TEXT( "NatLink: an exception occurred loading 'natlinkmain' module" ) ); // RW TEXT macro added
-		m_pDragCode->displayText(
-			"An exception occurred loading 'natlinkmain' module\r\n", TRUE );
-		m_pDragCode->displayText(
-			"No more error information is available\r\n", TRUE );
-	}
+	// load and initialise Python
+	loadAndInitPython();
 }

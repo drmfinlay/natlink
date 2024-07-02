@@ -26,6 +26,7 @@ class ATL_NO_VTABLE CDgnAppSupport :
 public:
 	CDgnAppSupport();
 	~CDgnAppSupport();
+	HRESULT loadAndInitPython();
 
 	// call this function to re-initialize the Python interface
 	void reloadPython();
@@ -49,6 +50,9 @@ public:
 	STDMETHOD(Register)(IServiceProvider *);
 
 protected:
+
+	// this is a pointer to the Dragon site object
+	IServiceProvider * m_pIDgnSite;
 
 	// this is a pointer to the NatSpeak python code module
 	PyObject * m_pNatlinkModule;
