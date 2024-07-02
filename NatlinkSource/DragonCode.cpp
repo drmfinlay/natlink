@@ -1198,7 +1198,6 @@ void CDragonCode::onMenuCommand( WPARAM wParam )
 {
 	if( LOWORD(wParam) == IDD_RELOAD )
 	{
-
 		// currently we do not support this operation if we are using thread
 		// support because I have not worked through the issues about what
 		// to do about the thread state
